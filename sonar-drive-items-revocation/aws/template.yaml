@@ -1,0 +1,72 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Receives Riot Sonar revocation webhooks and removes the Google Drive or Microsoft 365 permission with your own credentials.
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: riot-sonar-drive-items-revocation
+    Description: Receives Riot Sonar revocation webhooks and removes the Google Drive or Microsoft 365 permission with your own credentials.
+    Author: Riot
+    SpdxLicenseId: MIT
+    LicenseUrl: ../../LICENSE
+    ReadmeUrl: ../docs/deploy-aws.md
+    Labels: [riot, sonar, google-drive, microsoft-365, webhook]
+    HomePageUrl: https://github.com/tryriot/riot-functions/tree/main/sonar-drive-items-revocation
+    SourceCodeUrl: https://github.com/tryriot/riot-functions/tree/main/sonar-drive-items-revocation
+    SemanticVersion: 1.0.0
+
+Resources:
+  # The deploy script uploads the bundle from the GitHub release right after the stack, so the stack holds a
+  # placeholder and never needs an S3 bucket. Stack updates leave the uploaded code alone because the
+  # placeholder never changes.
+  RevokerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      InlineCode: "exports.handler = async () => ({ statusCode: 503, body: 'The code is not uploaded yet. Rerun the deploy script.' });"
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Architectures: [arm64]
+      MemorySize: 256
+      # Google and Microsoft token exchanges plus the delete call; the 3 s default is too tight on a cold start.
+      Timeout: 30
+      # Riot only shows its signing secret once the endpoint exists, and the endpoint needs this stack's URL, so
+      # the deploy script, or the console, stores the credentials afterwards as SecureString parameters named
+      # /<stack name>/<variable>. CloudFormation can't create SecureString parameters itself.
+      Environment:
+        Variables:
+          PARAMETER_PREFIX: !Sub /${AWS::StackName}/
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameters
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/*
+      Events:
+        Webhook:
+          Type: HttpApi
+          Properties: { Path: /api/webhook, Method: POST }
+        Check:
+          Type: HttpApi
+          Properties: { Path: /api/check, Method: POST }
+        Status:
+          Type: HttpApi
+          Properties: { Path: /, Method: GET }
+
+  RevokerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${RevokerFunction}
+      RetentionInDays: 30
+
+Outputs:
+  WebhookUrl:
+    Description: Paste this URL in Riot when creating the webhook endpoint.
+    Value: !Sub https://${ServerlessHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/api/webhook
+  StatusUrl:
+    Description: Open this URL to check which credentials are configured.
+    Value: !Sub https://${ServerlessHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/
+  ParameterPrefix:
+    Description: Store the Riot signing secret and the Google or Microsoft credentials as SecureString parameters under this path.
+    Value: !Sub /${AWS::StackName}/
+  FunctionName:
+    Description: The Lambda function, for its logs.
+    Value: !Ref RevokerFunction
