@@ -1,0 +1,14 @@
+sonar-drive-items-revocation/gcp/Dockerfile
+  h_78b17e3139b78e 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "56b9dac24181adae92b100edeaf2c806ce766176",
+  "prompts": {},
+  "humans": {
+    "h_78b17e3139b78e": {
+      "author": "y0anfa <yoan@tryriot.com>"
+    }
+  }
+}
